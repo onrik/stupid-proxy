@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -72,6 +73,16 @@ func director(routes []Route) func(req *http.Request) {
 	}
 }
 
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *responseWriter) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 func main() {
 	configFile := flag.String("config", "/etc/stupid-proxy/config.json", "")
 	flag.Parse()
@@ -83,9 +94,15 @@ func main() {
 	}
 	proxy := &httputil.ReverseProxy{Director: director(config.routes)}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		// log.Println(r.Method, r.URL.Path)
+
+		w := &responseWriter{rw, 0}
 		proxy.ServeHTTP(w, r)
+
+		if w.statusCode == http.StatusBadGateway || w.statusCode == http.StatusGatewayTimeout {
+			rw.Write([]byte(fmt.Sprintf("%d %s", w.statusCode, http.StatusText(w.statusCode))))
+		}
 	})
 
 	log.Printf("Listen %s...", config.Listen)
