@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -67,6 +68,7 @@ func director(routes []Route) func(req *http.Request) {
 			if strings.HasPrefix(req.URL.Path, routes[i].Prefix) {
 				req.Header.Add("X-Origin-Host", routes[i].Proxy.Host)
 				req.URL.Host = routes[i].Proxy.Host
+				req.URL.Scheme = routes[i].Proxy.Scheme
 				break
 			}
 		}
@@ -92,7 +94,12 @@ func main() {
 		log.Println(err)
 		return
 	}
-	proxy := &httputil.ReverseProxy{Director: director(config.routes)}
+	transport := *http.DefaultTransport.(*http.Transport)
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	proxy := &httputil.ReverseProxy{
+		Director:  director(config.routes),
+		Transport: &transport,
+	}
 
 	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		// log.Println(r.Method, r.URL.Path)
